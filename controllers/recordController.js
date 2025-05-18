@@ -163,26 +163,42 @@ const recordController = {
       }
 
       // ─── BUDGET WARNING ───
+
       {
-        const start = moment().startOf('month').toDate()
-        const end = moment().endOf('month').toDate()
+        const start = moment().startOf('month').toDate();
+        const end = moment().endOf('month').toDate();
 
-        // sum this month’s outflows/inflows
+        // Only sum EXPENSES (negative amounts)
         const agg = await Record.aggregate([
-          { $match: { userId: req.user._id, date: { $gte: start, $lte: end } } },
-          { $group: { _id: null, sum: { $sum: '$amount' } } }
-        ])
-        const totalThisMonth = agg[0]?.sum || 0
+          {
+            $match: {
+              userId: req.user._id,
+              date: { $gte: start, $lte: end },
+              type: "expense" // ← Critical filter
+            }
+          },
+          {
+            $group: {
+              _id: null,
+              sum: { $sum: '$amount' }
+            }
+          }
+        ]);
 
-        let warning = null
+        // Convert to positive number (since expenses are stored as negatives)
+        const totalExpensesThisMonth = Math.abs(agg[0]?.sum || 0);
+
+        let warning = null;
         if (req.user.budget > 0) {
-          if (totalThisMonth >= req.user.budget) warning = 'exceeded'
-          else if (totalThisMonth >= 0.8 * req.user.budget) warning = 'near'
+          if (totalExpensesThisMonth >= req.user.budget) {
+            warning = 'exceeded';
+          } else if (totalExpensesThisMonth >= 0.8 * req.user.budget) {
+            warning = 'near';
+          }
         }
 
-        // expose to template
-        res.locals.totalThisMonth = totalThisMonth
-        res.locals.warning = warning
+        res.locals.totalThisMonth = totalExpensesThisMonth;
+        res.locals.warning = warning;
       }
 
       return res.render(page, {
